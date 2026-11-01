@@ -192,6 +192,8 @@ pub struct TweenSystemData<Data: Send + Sync + 'static> {
     progress: &'static TimeSpanProgress,
     /// The current interpolation value
     interpolation_value: Option<&'static TweenInterpolationValue>,
+    /// The parent used to search for animation roots
+    parent: Option<&'static ChildOf>,
 }
 
 // Note we need to implement event for the data item,
@@ -218,9 +220,26 @@ where
             ..self.event()
         }
     }
+
+    /// Constructs a tween event at the closest animation root, if one can be found
+    pub fn root_event(
+        &self,
+        q_roots: Query<(), With<TimeRunner>>,
+    ) -> Option<TweenEvent<Data>> {
+        if q_roots.contains(self.entity) {
+            return Some(self.event());
+        }
+
+        let &ChildOf(parent) = self.parent?;
+        if q_roots.contains(parent) {
+            return Some(self.event_on(parent));
+        }
+
+        None
+    }
 }
 
-/// Fires a [`TweenEvent`] message with optional user data
+/// Fires a [`TweenEvent`] message from the animation root with optional user data
 /// whenever [`TimeSpanProgress`] and [`TweenEventData`] exist in the
 /// same entity and data is `Some`, cloning the data.
 #[allow(clippy::type_complexity)]
@@ -233,39 +252,15 @@ pub fn tween_message_system<Data, TimeCtx>(
             With<MessageEmittingTween>,
         ),
     >,
+    q_tween_roots: Query<(), With<TimeRunner>>,
     mut event_writer: MessageWriter<TweenEvent<Data>>,
 ) where
     Data: Clone + Send + Sync + 'static,
     TimeCtx: Default + Send + Sync + 'static,
 {
     q_tween_event_data.iter().for_each(|data| {
-        event_writer.write(data.event());
-    });
-}
-
-/// Fires a [`TweenEvent`] to the animation root with optional user data
-/// whenever [`TimeSpanProgress`] and [`TweenEventData`] exist in the
-/// same entity and data is `Some`, cloning the data.
-#[allow(clippy::type_complexity)]
-pub fn tween_event_system<Data, TimeCtx>(
-    mut commands: Commands,
-    q_tween_event_data: Query<
-        (&ChildOf, TweenSystemData<Data>),
-        (
-            Without<SkipTween>,
-            With<TimeContext<TimeCtx>>,
-            With<EventEmittingTween>,
-        ),
-    >,
-    q_tween_roots: Query<(), With<TimeRunner>>,
-) where
-    Data: Clone + Send + Sync + 'static,
-    TimeCtx: Default + Send + Sync + 'static,
-{
-    q_tween_event_data.iter().for_each(|(child_of, data)| {
-        let root = child_of.parent();
-        if !q_tween_roots.contains(root) {
-            warn!(
+        let Some(event) = data.root_event(q_tween_roots) else {
+            warn_once!(
                 "Could not find an associated animation root for a tween event on entity {:?} with data {:?}\n\
                  help: make sure you have a `TimeRunner` defined on the entity you plan on animating",
                  data.event().entity,
@@ -274,6 +269,40 @@ pub fn tween_event_system<Data, TimeCtx>(
             return;
         };
 
-        commands.trigger(data.event_on(root));
+        event_writer.write(event);
+    });
+}
+
+/// Fires a [`TweenEvent`] to the animation root with optional user data
+/// whenever [`TimeSpanProgress`] and [`TweenEventData`] exist in the
+/// same entity and data is `Some`, cloning the data.
+#[allow(clippy::type_complexity)]
+pub fn tween_event_system<Data, TimeCtx>(
+    q_tween_event_data: Query<
+        TweenSystemData<Data>,
+        (
+            Without<SkipTween>,
+            With<TimeContext<TimeCtx>>,
+            With<EventEmittingTween>,
+        ),
+    >,
+    q_tween_roots: Query<(), With<TimeRunner>>,
+    mut commands: Commands,
+) where
+    Data: Clone + Send + Sync + 'static,
+    TimeCtx: Default + Send + Sync + 'static,
+{
+    q_tween_event_data.iter().for_each(|data| {
+        let Some(event) = data.root_event(q_tween_roots) else {
+            warn_once!(
+                "Could not find an associated animation root for a tween event on entity {:?} with data {:?}\n\
+                 help: make sure you have a `TimeRunner` defined on the entity you plan on animating",
+                 data.event().entity,
+                 std::any::type_name::<Data>(),
+            );
+            return;
+        };
+
+        commands.trigger(event);
     });
 }
