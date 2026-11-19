@@ -203,7 +203,7 @@ where
     Data: Clone + Send + Sync + 'static,
 {
     /// Constructs a tween event for the given tween data entity
-    pub fn event(&self) -> TweenEvent<Data> {
+    fn event(&self) -> TweenEvent<Data> {
         TweenEvent {
             data: self.event_data.0.clone(),
             progress: *self.progress,
@@ -214,7 +214,7 @@ where
     }
 
     /// Constructs a tween event for a different tween data entity
-    pub fn event_on(&self, entity: Entity) -> TweenEvent<Data> {
+    fn event_on(&self, entity: Entity) -> TweenEvent<Data> {
         TweenEvent {
             entity,
             ..self.event()
@@ -222,7 +222,7 @@ where
     }
 
     /// Constructs a tween event at the closest animation root, if one can be found
-    pub fn root_event(
+    fn root_event(
         &self,
         q_roots: Query<(), With<TimeRunner>>,
     ) -> Option<TweenEvent<Data>> {
