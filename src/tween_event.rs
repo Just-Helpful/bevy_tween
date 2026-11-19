@@ -26,7 +26,6 @@
 //! See [`DefaultTweenEventPlugins`] for default events which is also added in
 //! [`DefaultTweenPlugins`](crate::DefaultTweenPlugins)
 
-use bevy::log::warn_once;
 use bevy_time_runner::{TimeContext, TimeRunner};
 use std::fmt::Debug;
 use std::marker::PhantomData;
